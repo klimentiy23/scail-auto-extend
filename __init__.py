@@ -21,9 +21,16 @@ import folder_paths
 
 
 def _plan_chunks(n_frames, chunk_len, overlap):
-    """Trim n_frames to 4n+1, return list of chunk lengths (all 4n+1).
-    Coverage = lengths[0] + sum(L - overlap for L in lengths[1:]) == n_eff."""
-    n_eff = ((n_frames - 1) // 4) * 4 + 1
+    """Pad to the next 4n+1 length and return 4n+1 chunk sizes.
+
+    SCAIL/Wan video lengths must be 4n+1. Rounding down silently cuts the tail
+    of normal videos (for example 272 frames -> 269). Instead, generate against
+    the next valid length and crop the final stitched result back to the original
+    frame count after sampling.
+
+    Coverage = lengths[0] + sum(L - overlap for L in lengths[1:]) == n_eff.
+    """
+    n_eff = math.ceil((n_frames - 1) / 4) * 4 + 1
     if n_eff <= chunk_len:
         return n_eff, [n_eff]
     step = chunk_len - overlap
@@ -108,8 +115,20 @@ class SCAILAutoExtend:
 
         n_input = pose_video.shape[0]
         n_eff, lengths = _plan_chunks(n_input, chunk_length, overlap)
-        print(f"[SCAIL Auto Extend] {n_input} pose frames -> {n_eff} output frames, "
-              f"{len(lengths)} chunk(s): {lengths}")
+        if n_eff > n_input:
+            pad = n_eff - n_input
+            repeat_shape = (pad,) + (1,) * (pose_video.ndim - 1)
+            pose_video = torch.cat([pose_video, pose_video[-1:].repeat(repeat_shape)], dim=0)
+            if (pose_video_mask is not None and hasattr(pose_video_mask, "shape")
+                    and pose_video_mask.shape[0] == n_input):
+                mask_repeat_shape = (pad,) + (1,) * (pose_video_mask.ndim - 1)
+                pose_video_mask = torch.cat(
+                    [pose_video_mask, pose_video_mask[-1:].repeat(mask_repeat_shape)], dim=0
+                )
+            print(f"[SCAIL Auto Extend] padded {n_input} pose frames to {n_eff} "
+                  f"valid 4n+1 frames; final output will be cropped back to {n_input}.")
+        print(f"[SCAIL Auto Extend] {n_input} pose frames -> {n_input} output frames, "
+              f"planning {n_eff} internal frames, {len(lengths)} chunk(s): {lengths}")
 
         pbar = comfy.utils.ProgressBar(len(lengths))
         chunks = []          # stitched contributions
@@ -165,6 +184,8 @@ class SCAILAutoExtend:
                   f"({length} frames, offset now {offset})")
 
         out = torch.cat([c.to(chunks[0].device, dtype=chunks[0].dtype) for c in chunks], dim=0)
+        if out.shape[0] > n_input:
+            out = out[:n_input]
         return (out, out.shape[0])
 
 
