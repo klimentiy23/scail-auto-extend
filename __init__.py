@@ -94,6 +94,12 @@ class SCAILAutoExtend:
                     "tooltip": "Odd blur radius for soft composite edges. 0 disables blur."}),
                 "composite_mask_expand": ("INT", {"default": 3, "min": -32, "max": 64, "step": 1,
                     "tooltip": "Dilate/erode the source subject mask before compositing. Positive includes edges/hair; negative shrinks."}),
+                "temporal_subject_color_smoothing": ("BOOLEAN", {"default": False,
+                    "tooltip": "Smooth per-frame color statistics inside the target mask to reduce skin/clothing color jumps on the replaced subject."}),
+                "temporal_color_alpha": ("FLOAT", {"default": 0.85, "min": 0.0, "max": 0.99, "step": 0.01,
+                    "tooltip": "EMA strength for temporal subject color smoothing. Higher = more stable, lower = follows lighting changes faster."}),
+                "temporal_color_strength": ("FLOAT", {"default": 0.65, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "tooltip": "Blend strength of the color-smoothed subject back into the generated subject."}),
             },
         }
 
@@ -104,7 +110,8 @@ class SCAILAutoExtend:
                  replacement_mode=True, pose_strength=1.0, pose_start=0.0,
                  pose_end=1.0, add_noise=True, composite_source_background=False,
                  composite_mask_threshold=0.05, composite_mask_blur=5,
-                 composite_mask_expand=3):
+                 composite_mask_expand=3, temporal_subject_color_smoothing=False,
+                 temporal_color_alpha=0.85, temporal_color_strength=0.65):
         # imported here so a missing/changed core module gives a clear error at run time
         from comfy_extras.nodes_scail import WanSCAILToVideo
         from comfy_extras.nodes_custom_sampler import SamplerCustom
@@ -241,6 +248,62 @@ class SCAILAutoExtend:
                     print(f"[SCAIL Auto Extend] composited generated subject over original source background using pose mask (threshold={composite_mask_threshold}, expand={composite_mask_expand}, blur={composite_mask_blur}).")
                 except Exception as e:
                     print(f"[SCAIL Auto Extend] background composite failed: {type(e).__name__}: {e}; returning raw SCAIL output.")
+        if temporal_subject_color_smoothing:
+            if pose_video_mask is None:
+                print("[SCAIL Auto Extend] temporal_subject_color_smoothing requested, but pose_video_mask is missing; smoothing whole frame.")
+                alpha_mask = torch.ones((out.shape[0], out.shape[1], out.shape[2], 1), device=out.device, dtype=out.dtype)
+            else:
+                try:
+                    mask_img = pose_video_mask[:out.shape[0]].to(out.device, dtype=out.dtype)
+                    if mask_img.ndim == 4:
+                        if mask_img.shape[-1] in (1, 3, 4):
+                            alpha_mask = mask_img[..., :3].amax(dim=-1, keepdim=True)
+                        else:
+                            alpha_mask = mask_img.amax(dim=1, keepdim=True).movedim(1, -1)
+                    elif mask_img.ndim == 3:
+                        alpha_mask = mask_img.unsqueeze(-1)
+                    else:
+                        raise ValueError(f"unsupported pose_video_mask shape {tuple(mask_img.shape)}")
+                    alpha_mask = (alpha_mask > float(composite_mask_threshold)).to(out.dtype)
+                    blur = int(composite_mask_blur)
+                    if blur > 0:
+                        if blur % 2 == 0:
+                            blur += 1
+                        pad = blur // 2
+                        alpha_mask = F.avg_pool2d(alpha_mask.movedim(-1, 1), kernel_size=blur, stride=1, padding=pad).movedim(1, -1)
+                    alpha_mask = alpha_mask.clamp(0.0, 1.0)
+                except Exception as e:
+                    print(f"[SCAIL Auto Extend] temporal mask build failed: {type(e).__name__}: {e}; smoothing whole frame.")
+                    alpha_mask = torch.ones((out.shape[0], out.shape[1], out.shape[2], 1), device=out.device, dtype=out.dtype)
+
+            try:
+                eps = 1e-6
+                ema_mean = None
+                ema_std = None
+                smoothed_frames = []
+                alpha = float(temporal_color_alpha)
+                strength = float(temporal_color_strength)
+                for t in range(out.shape[0]):
+                    frame = out[t]
+                    m = alpha_mask[t].clamp(0.0, 1.0)
+                    weight = m.sum().clamp_min(eps)
+                    mean = (frame * m).sum(dim=(0, 1), keepdim=True) / weight
+                    var = (((frame - mean) * m) ** 2).sum(dim=(0, 1), keepdim=True) / weight
+                    std = torch.sqrt(var + eps)
+                    if ema_mean is None:
+                        ema_mean = mean
+                        ema_std = std
+                    else:
+                        ema_mean = alpha * ema_mean + (1.0 - alpha) * mean
+                        ema_std = alpha * ema_std + (1.0 - alpha) * std
+                    matched = (frame - mean) / std.clamp_min(eps) * ema_std.clamp_min(eps) + ema_mean
+                    matched = matched.clamp(0.0, 1.0)
+                    frame_out = frame * (1.0 - m * strength) + matched * (m * strength)
+                    smoothed_frames.append(frame_out)
+                out = torch.stack(smoothed_frames, dim=0)
+                print(f"[SCAIL Auto Extend] temporally smoothed target-subject color (alpha={temporal_color_alpha}, strength={temporal_color_strength}).")
+            except Exception as e:
+                print(f"[SCAIL Auto Extend] temporal subject color smoothing failed: {type(e).__name__}: {e}; returning unsmoothed output.")
         return (out, out.shape[0])
 
 
