@@ -86,6 +86,14 @@ class SCAILAutoExtend:
                 "pose_start": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "pose_end": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "add_noise": ("BOOLEAN", {"default": True}),
+                "composite_source_background": ("BOOLEAN", {"default": False,
+                    "tooltip": "After SCAIL generation, keep the original pose_video background and paste only the generated target subject through pose_video_mask. Use this when SCAIL changes the room/background."}),
+                "composite_mask_threshold": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "tooltip": "Threshold for converting the colored SCAIL pose mask into an alpha mask for background preservation."}),
+                "composite_mask_blur": ("INT", {"default": 5, "min": 0, "max": 51, "step": 2,
+                    "tooltip": "Odd blur radius for soft composite edges. 0 disables blur."}),
+                "composite_mask_expand": ("INT", {"default": 3, "min": -32, "max": 64, "step": 1,
+                    "tooltip": "Dilate/erode the source subject mask before compositing. Positive includes edges/hair; negative shrinks."}),
             },
         }
 
@@ -94,7 +102,9 @@ class SCAILAutoExtend:
                  color_transfer, pose_video_mask=None, reference_image=None,
                  reference_image_mask=None, clip_vision_output=None,
                  replacement_mode=True, pose_strength=1.0, pose_start=0.0,
-                 pose_end=1.0, add_noise=True):
+                 pose_end=1.0, add_noise=True, composite_source_background=False,
+                 composite_mask_threshold=0.05, composite_mask_blur=5,
+                 composite_mask_expand=3):
         # imported here so a missing/changed core module gives a clear error at run time
         from comfy_extras.nodes_scail import WanSCAILToVideo
         from comfy_extras.nodes_custom_sampler import SamplerCustom
@@ -186,6 +196,51 @@ class SCAILAutoExtend:
         out = torch.cat([c.to(chunks[0].device, dtype=chunks[0].dtype) for c in chunks], dim=0)
         if out.shape[0] > n_input:
             out = out[:n_input]
+
+        if composite_source_background:
+            if pose_video_mask is None:
+                print("[SCAIL Auto Extend] composite_source_background requested, but pose_video_mask is missing; returning raw SCAIL output.")
+            else:
+                try:
+                    src = pose_video[:out.shape[0]].to(out.device, dtype=out.dtype)
+                    if src.shape[1:3] != out.shape[1:3]:
+                        src_chw = src.movedim(-1, 1)
+                        src_chw = comfy.utils.common_upscale(src_chw, out.shape[2], out.shape[1], "bilinear", crop="disabled")
+                        src = src_chw.movedim(1, -1)
+
+                    mask_img = pose_video_mask[:out.shape[0]].to(out.device, dtype=out.dtype)
+                    if mask_img.ndim == 4:
+                        if mask_img.shape[-1] in (1, 3, 4):
+                            mask = mask_img[..., :3].amax(dim=-1, keepdim=True)
+                        else:
+                            mask = mask_img.amax(dim=1, keepdim=True).movedim(1, -1)
+                    elif mask_img.ndim == 3:
+                        mask = mask_img.unsqueeze(-1)
+                    else:
+                        raise ValueError(f"unsupported pose_video_mask shape {tuple(mask_img.shape)}")
+
+                    mask = (mask > float(composite_mask_threshold)).to(out.dtype)
+                    k_expand = abs(int(composite_mask_expand))
+                    if k_expand:
+                        k = k_expand * 2 + 1
+                        m = mask.movedim(-1, 1)
+                        if composite_mask_expand > 0:
+                            m = F.max_pool2d(m, kernel_size=k, stride=1, padding=k_expand)
+                        else:
+                            m = 1.0 - F.max_pool2d(1.0 - m, kernel_size=k, stride=1, padding=k_expand)
+                        mask = m.movedim(1, -1)
+
+                    blur = int(composite_mask_blur)
+                    if blur > 0:
+                        if blur % 2 == 0:
+                            blur += 1
+                        pad = blur // 2
+                        mask = F.avg_pool2d(mask.movedim(-1, 1), kernel_size=blur, stride=1, padding=pad).movedim(1, -1)
+                    mask = mask.clamp(0.0, 1.0)
+                    out = out * mask + src * (1.0 - mask)
+                    print(f"[SCAIL Auto Extend] composited generated subject over original source background using pose mask (threshold={composite_mask_threshold}, expand={composite_mask_expand}, blur={composite_mask_blur}).")
+                except Exception as e:
+                    print(f"[SCAIL Auto Extend] background composite failed: {type(e).__name__}: {e}; returning raw SCAIL output.")
         return (out, out.shape[0])
 
 
