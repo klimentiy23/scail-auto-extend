@@ -769,17 +769,84 @@ class SCAIL2MultiReference:
         return (positive, negative)
 
 
+class SCAILSaveSelectedVideo:
+    """Output node for the low-VRAM workflow.
+
+    In low_vram_stream_to_video mode SCAILAutoExtend returns only preview frames
+    on IMAGE, while the real full-length mp4 is written to final_video_path.
+    This node makes that explicit in the UI: one Russian mode switch chooses
+    whether the ComfyUI result is the full mp4 path or the short preview video.
+    """
+
+    RETURN_TYPES = ()
+    FUNCTION = "save"
+    OUTPUT_NODE = True
+    CATEGORY = "SCAIL/Видео"
+
+    FINAL_MODE = "ФИНАЛ — полный ролик"
+    PREVIEW_MODE = "ПРЕВЬЮ — короткая проверка"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "режим": ([cls.FINAL_MODE, cls.PREVIEW_MODE], {"default": cls.FINAL_MODE}),
+                "filename_prefix": ("STRING", {"default": "SCAIL_ФИНАЛ", "multiline": False}),
+                "format": (["auto", "mp4"], {"default": "auto"}),
+                "codec": (["auto", "h264"], {"default": "auto"}),
+            },
+            "optional": {
+                "final_video_path": ("STRING", {"forceInput": True, "default": ""}),
+                "preview_video": ("VIDEO", {"forceInput": True}),
+            },
+        }
+
+    def _next_output_path(self, filename_prefix, ext):
+        output_dir = folder_paths.get_output_directory()
+        full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
+            filename_prefix, output_dir, 0, 0
+        )
+        file = f"{filename}_{counter:05}_.{ext.lstrip('.')}"
+        return full_output_folder, file, subfolder, os.path.join(full_output_folder, file)
+
+    def save(self, режим, filename_prefix, format, codec, final_video_path="", preview_video=None):
+        if режим == self.FINAL_MODE:
+            video_path = (final_video_path or "").strip().strip('"')
+            if not video_path:
+                raise ValueError("Режим ФИНАЛ выбран, но final_video_path пустой. Проверьте выход SCAILAutoExtend.final_video_path/Bjornulf mux.")
+            video_path = os.path.abspath(video_path)
+            if not os.path.exists(video_path):
+                raise FileNotFoundError(f"Финальный MP4 не найден: {video_path}")
+            ext = os.path.splitext(video_path)[1].lower() or ".mp4"
+            if ext not in (".mp4", ".mkv", ".webm", ".mov"):
+                raise ValueError(f"Неподдерживаемый формат финального видео: {ext}")
+            full_output_folder, file, subfolder, out_path = self._next_output_path(filename_prefix or "SCAIL_ФИНАЛ", ext)
+            shutil.copy2(video_path, out_path)
+            print(f"[SCAIL] Сохранён полный ролик: {out_path}")
+            return {"ui": {"videos": [{"filename": file, "subfolder": subfolder, "type": "output"}]}}
+
+        if preview_video is None:
+            raise ValueError("Режим ПРЕВЬЮ выбран, но preview_video не подключён.")
+        from comfy_api.latest import Types
+        full_output_folder, file, subfolder, out_path = self._next_output_path(filename_prefix or "SCAIL_ПРЕВЬЮ", ".mp4")
+        preview_video.save_to(out_path, format=Types.VideoContainer(format), codec=codec)
+        print(f"[SCAIL] Сохранено короткое превью: {out_path}")
+        return {"ui": {"videos": [{"filename": file, "subfolder": subfolder, "type": "output"}]}}
+
+
 NODE_CLASS_MAPPINGS = {
     "SCAILAutoExtend": SCAILAutoExtend,
     "SCAIL2IdentitySeeder": SCAIL2IdentitySeeder,
     "SCAIL2IdentityTracker": SCAIL2IdentityTracker,
     "SCAIL2MultiReference": SCAIL2MultiReference,
+    "SCAILSaveSelectedVideo": SCAILSaveSelectedVideo,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SCAILAutoExtend": "SCAIL Auto Extend Sampler",
     "SCAIL2IdentitySeeder": "SCAIL-2 Identity Seeder",
     "SCAIL2IdentityTracker": "SCAIL-2 Identity Tracker",
     "SCAIL2MultiReference": "SCAIL-2 Multi-Reference (experimental)",
+    "SCAILSaveSelectedVideo": "SCAIL: сохранить выбранное видео (ФИНАЛ/ПРЕВЬЮ)",
 }
 
 WEB_DIRECTORY = "./web"

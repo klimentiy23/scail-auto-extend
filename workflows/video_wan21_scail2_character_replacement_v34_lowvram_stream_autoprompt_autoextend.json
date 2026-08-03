@@ -2,7 +2,7 @@
   "id": "v33-background-preserve-colorstable-autoprompt-autoextend",
   "revision": 6,
   "last_node_id": 349,
-  "last_link_id": 586,
+  "last_link_id": 587,
   "nodes": [
     {
       "id": 201,
@@ -64,7 +64,7 @@
           ]
         }
       ],
-      "title": "Create Final Video",
+      "title": "Создать ПРЕВЬЮ-видео из кадров SCAIL (не финал)",
       "properties": {
         "cnr_id": "comfy-core",
         "ver": "0.24.0",
@@ -96,7 +96,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 9,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -146,7 +146,8 @@
           "input_ue_unconnectable": {}
         }
       },
-      "widgets_values": []
+      "widgets_values": [],
+      "title": "Разобрать исходное видео: кадры / аудио / FPS"
     },
     {
       "id": 320,
@@ -164,7 +165,7 @@
       "mode": 2,
       "inputs": [],
       "outputs": [],
-      "title": "Model Links",
+      "title": "Ссылки на модели",
       "properties": {
         "ue_properties": {
           "widget_ue_connectable": {},
@@ -179,67 +180,23 @@
       "bgcolor": "#000"
     },
     {
-      "id": 202,
-      "type": "SaveVideo",
+      "id": 274,
+      "type": "MarkdownNote",
       "pos": [
-        1449.5971712478854,
-        5676.0664219898645
+        -430,
+        4330
       ],
       "size": [
-        499.96875,
-        1007.0340909090909
+        969.984375,
+        2199.984375
       ],
       "flags": {},
-      "order": 11,
+      "order": 1,
       "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "видео",
-          "name": "video",
-          "type": "VIDEO",
-          "link": 471
-        },
-        {
-          "localized_name": "префикс_имени_файла",
-          "name": "filename_prefix",
-          "type": "STRING",
-          "widget": {
-            "name": "filename_prefix"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "формат",
-          "name": "format",
-          "type": "COMBO",
-          "widget": {
-            "name": "format"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "кодек",
-          "name": "codec",
-          "type": "COMBO",
-          "widget": {
-            "name": "codec"
-          },
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "video",
-          "name": "video",
-          "type": "VIDEO",
-          "links": null
-        }
-      ],
-      "title": "Save Full Video (from SCAIL_lowvram/*_final.mp4) with original audio",
+      "inputs": [],
+      "outputs": [],
+      "title": "ИНСТРУКЦИЯ — выбери ФИНАЛ или ПРЕВЬЮ в правом выходном узле",
       "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.24.0",
-        "Node name for S&R": "SaveVideo",
         "ue_properties": {
           "widget_ue_connectable": {},
           "version": "7.8",
@@ -247,9 +204,277 @@
         }
       },
       "widgets_values": [
-        "SCAIL_FULL_VIDEO",
-        "auto",
-        "auto"
+        "ВАЖНО:\n• В LowVRAM режиме выход IMAGE у SCAILAutoExtend — это только короткое превью, не финальный ролик.\n• Полный ролик создаётся как MP4 внутри SCAIL_lowvram, затем узел Bjornulf добавляет исходное аудио.\n• Справа используйте узел “✅ ВЫХОД”:\n  - ФИНАЛ — полный ролик: сохранить полный MP4 с аудио.\n  - ПРЕВЬЮ — короткая проверка: сохранить только несколько кадров.\n• Не используйте старый SaveVideo для финала — он сохранял только превью."
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 321,
+      "type": "MarkdownNote",
+      "pos": [
+        -134.62764790730242,
+        5165.10119546223
+      ],
+      "size": [
+        520,
+        240
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Запуск с Sage/Triton",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Sage/Triton optimized V2 workflow\n\nThis workflow is a separate copy for the optimized ComfyUI launch mode.\n\nUse it together with:\n\n`D:/ComfyUI_windows_portable/run_nvidia_gpu_sage_triton.bat`\n\nAttention/Triton is a global ComfyUI startup mode, not a per-node widget.\n\nExpected startup log:\n\n- `Using sage attention`\n- comfy_kitchen backend triton: `disabled: False`\n\nIf it falls back to PyTorch attention, close ComfyUI and use the normal V2 workflow.\n\nV3.3 color stable: also smooths color statistics inside the target subject mask over time to reduce skin/clothing hue/exposure jumps."
+      ],
+      "color": "#243b53",
+      "bgcolor": "#132f4c"
+    },
+    {
+      "id": 322,
+      "type": "MarkdownNote",
+      "pos": [
+        620,
+        5350
+      ],
+      "size": [
+        520,
+        260
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "### Advanced multi-reference is not default\n\nThis simple workflow sends the same full-body/front reference to:\n- AutoPrompt V2 identity context\n- SCAIL main reference / SAM mask / CLIPVision\n\nIf a specific clip has identity drift when the person turns, use the separate advanced V2 multi-reference workflow. Do not start there by default.\n\n\nV3.3 color stable: also smooths color statistics inside the target subject mask over time to reduce skin/clothing hue/exposure jumps."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 324,
+      "type": "MarkdownNote",
+      "pos": [
+        757.8379567714064,
+        4596.570267117255
+      ],
+      "size": [
+        520,
+        180
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Режим фона V3.4",
+      "properties": {
+        "Node name for S&R": "MarkdownNote",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "## Background mode / режим фона\n\n**KEEP ORIGINAL BACKGROUND = ON** — после генерации SCAIL человек вставляется обратно на исходный фон через маску; фон должен оставаться прежним.\n\n**KEEP ORIGINAL BACKGROUND = OFF** — фон не композитится назад; можно описывать желаемый фон в prompt/user hint, и модель может заменить окружение."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 323,
+      "type": "Bool",
+      "pos": [
+        758.543200591094,
+        4461.502702706401
+      ],
+      "size": [
+        506.343359375,
+        80
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "value",
+          "name": "value",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "value"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "БУЛЕВО",
+          "name": "BOOLEAN",
+          "type": "BOOLEAN",
+          "links": [
+            580
+          ]
+        }
+      ],
+      "title": "СОХРАНИТЬ ИСХОДНЫЙ ФОН — ВКЛ=старый фон, ВЫКЛ=фон из prompt",
+      "properties": {
+        "Node name for S&R": "Bool",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "value": true
+          },
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        true
+      ]
+    },
+    {
+      "id": 155,
+      "type": "LoadVideo",
+      "pos": [
+        475.90351481282994,
+        3118.9083243707646
+      ],
+      "size": [
+        619.96875,
+        1176.1666666666667
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "файл",
+          "name": "file",
+          "type": "COMBO",
+          "widget": {
+            "name": "file"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "выберите файл для загрузки",
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "widget": {
+            "name": "upload"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "ВИДЕО",
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            494,
+            516
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.24.0",
+        "Node name for S&R": "LoadVideo",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Timeline 155555.mp4",
+        "image"
+      ],
+      "title": "ИСХОДНОЕ ВИДЕО"
+    },
+    {
+      "id": 276,
+      "type": "LoadImage",
+      "pos": [
+        640,
+        4817.189756315193
+      ],
+      "size": [
+        600,
+        459.984375
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "изображение",
+          "name": "image",
+          "type": "COMBO",
+          "widget": {
+            "name": "image"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "выберите файл для загрузки",
+          "name": "upload",
+          "type": "IMAGEUPLOAD",
+          "widget": {
+            "name": "upload"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "ИЗОБРАЖЕНИЕ",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            520,
+            522
+          ]
+        },
+        {
+          "localized_name": "МАСКА",
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "title": "ФОТО-РЕФЕРЕНС — человек полностью / спереди",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.24.0",
+        "Node name for S&R": "LoadImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.8",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "257cf462-2477-4e2a-92a2-f9cf722e5754.png",
+        "image"
       ]
     },
     {
@@ -264,7 +489,7 @@
         1280
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -465,7 +690,6 @@
         {
           "label": "KEEP ORIGINAL BACKGROUND / сохранить исходный фон",
           "name": "keep_original_background",
-          "shape": 7,
           "type": "BOOLEAN",
           "widget": {
             "name": "keep_original_background"
@@ -475,15 +699,23 @@
       ],
       "outputs": [
         {
-          "localized_name": "output",
-          "name": "output",
+          "localized_name": "превью-кадры",
+          "name": "preview_images",
           "type": "IMAGE",
           "links": [
             498
           ]
+        },
+        {
+          "localized_name": "путь к финальному MP4",
+          "name": "final_video_path",
+          "type": "STRING",
+          "links": [
+            587
+          ]
         }
       ],
-      "title": "SIMPLE V3.3: Preserve Background + Stable Subject Color",
+      "title": "SCAIL V3.4 — замена человека + LowVRAM полный ролик",
       "properties": {
         "proxyWidgets": [
           [
@@ -549,10 +781,6 @@
           [
             "3",
             "text"
-          ],
-          [
-            "114",
-            "noise_seed"
           ],
           [
             "114",
@@ -624,377 +852,77 @@
       "widgets_values": []
     },
     {
-      "id": 274,
-      "type": "MarkdownNote",
-      "pos": [
-        -430,
-        4330
-      ],
-      "size": [
-        969.984375,
-        2199.984375
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "READ ME — V3.1 Simple recommended workflow",
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.8",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "# V3.1 Simple — recommended workflow\n\nThis is the simplified workflow to use first.\n\n## What changed vs the cluttered GAP hybrid\n- Uses **our SCAIL Auto Prompt Builder V2** again.\n- Uses **our SCAIL Auto Extend V3** for full-length video, chunking, overlap, stitching and LAB color transfer.\n- Uses **one required reference photo** only: full body/front/person.\n- No manual `base_prompt`, `character_prompts`, or `prompt_schedule` fields.\n- No GAP generator/orchestrator in the main path.\n\n## Why one reference by default?\nSCAIL technically supports multiple reference images, but extra views are conditional. The safest baseline is one clean full-body/front reference. Use the heavier multi-reference V2 only if identity drifts on turns/back view.\n\n## How to use\n1. Load the source video.\n2. Load one good full-body/front reference photo.\n3. Optional: write a short target hint in the subgraph field, e.g. `main foreground subject` or `woman sitting on the floor`.\n4. For a first 81-frame preview, use a pre-trimmed preview clip. This workflow uses core LoadVideo, which has no frame_load_cap.\n5. Full render: load the full source video normally.\n\nKeep `wan2.1_14B_SCAIL_2_fp8_scaled.safetensors`, `chunk_length=81`, `overlap=5`, `color_transfer=True` on 16GB VRAM.\n\n\nV3.3 color stable: also smooths color statistics inside the target subject mask over time to reduce skin/clothing hue/exposure jumps."
-      ],
-      "color": "#222",
-      "bgcolor": "#000"
-    },
-    {
-      "id": 321,
-      "type": "MarkdownNote",
-      "pos": [
-        -134.62764790730242,
-        5165.10119546223
-      ],
-      "size": [
-        520,
-        240
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Sage/Triton optimized launch note",
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.8",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "# Sage/Triton optimized V2 workflow\n\nThis workflow is a separate copy for the optimized ComfyUI launch mode.\n\nUse it together with:\n\n`D:/ComfyUI_windows_portable/run_nvidia_gpu_sage_triton.bat`\n\nAttention/Triton is a global ComfyUI startup mode, not a per-node widget.\n\nExpected startup log:\n\n- `Using sage attention`\n- comfy_kitchen backend triton: `disabled: False`\n\nIf it falls back to PyTorch attention, close ComfyUI and use the normal V2 workflow.\n\nV3.3 color stable: also smooths color statistics inside the target subject mask over time to reduce skin/clothing hue/exposure jumps."
-      ],
-      "color": "#243b53",
-      "bgcolor": "#132f4c"
-    },
-    {
-      "id": 322,
-      "type": "MarkdownNote",
-      "pos": [
-        620,
-        5350
-      ],
-      "size": [
-        520,
-        260
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.8",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "### Advanced multi-reference is not default\n\nThis simple workflow sends the same full-body/front reference to:\n- AutoPrompt V2 identity context\n- SCAIL main reference / SAM mask / CLIPVision\n\nIf a specific clip has identity drift when the person turns, use the separate advanced V2 multi-reference workflow. Do not start there by default.\n\n\nV3.3 color stable: also smooths color statistics inside the target subject mask over time to reduce skin/clothing hue/exposure jumps."
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
-      "id": 324,
-      "type": "MarkdownNote",
-      "pos": [
-        757.8379567714064,
-        4596.570267117255
-      ],
-      "size": [
-        520,
-        180
-      ],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Background mode note V3.4",
-      "properties": {
-        "Node name for S&R": "MarkdownNote",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.8",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "## Background mode / режим фона\n\n**KEEP ORIGINAL BACKGROUND = ON** — после генерации SCAIL человек вставляется обратно на исходный фон через маску; фон должен оставаться прежним.\n\n**KEEP ORIGINAL BACKGROUND = OFF** — фон не композитится назад; можно описывать желаемый фон в prompt/user hint, и модель может заменить окружение."
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
-      "id": 323,
-      "type": "Bool",
-      "pos": [
-        758.543200591094,
-        4461.502702706401
-      ],
-      "size": [
-        506.343359375,
-        80
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "value",
-          "name": "value",
-          "type": "BOOLEAN",
-          "widget": {
-            "name": "value"
-          },
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "БУЛЕВО",
-          "name": "BOOLEAN",
-          "type": "BOOLEAN",
-          "links": [
-            580
-          ]
-        }
-      ],
-      "title": "KEEP ORIGINAL BACKGROUND — ON=старый фон, OFF=фон из prompt",
-      "properties": {
-        "Node name for S&R": "Bool",
-        "ue_properties": {
-          "widget_ue_connectable": {
-            "value": true
-          },
-          "version": "7.8",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        true
-      ]
-    },
-    {
-      "id": 276,
-      "type": "LoadImage",
-      "pos": [
-        640,
-        4820
-      ],
-      "size": [
-        600,
-        459.984375
-      ],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "изображение",
-          "name": "image",
-          "type": "COMBO",
-          "widget": {
-            "name": "image"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "выберите файл для загрузки",
-          "name": "upload",
-          "type": "IMAGEUPLOAD",
-          "widget": {
-            "name": "upload"
-          },
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "ИЗОБРАЖЕНИЕ",
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            520,
-            522
-          ]
-        },
-        {
-          "localized_name": "МАСКА",
-          "name": "MASK",
-          "type": "MASK",
-          "links": null
-        }
-      ],
-      "title": "REFERENCE PHOTO — full body/front/person (required)",
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.24.0",
-        "Node name for S&R": "LoadImage",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.8",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "ChatGPT Image 3 авг. 2026 г., 04_31_24 (2).png",
-        "image"
-      ]
-    },
-    {
-      "id": 155,
-      "type": "LoadVideo",
-      "pos": [
-        475.90351481282994,
-        3118.9083243707646
-      ],
-      "size": [
-        619.96875,
-        1176.1666666666667
-      ],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {
-          "localized_name": "файл",
-          "name": "file",
-          "type": "COMBO",
-          "widget": {
-            "name": "file"
-          },
-          "link": null
-        },
-        {
-          "localized_name": "выберите файл для загрузки",
-          "name": "upload",
-          "type": "IMAGEUPLOAD",
-          "widget": {
-            "name": "upload"
-          },
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "ВИДЕО",
-          "name": "VIDEO",
-          "type": "VIDEO",
-          "links": [
-            494,
-            516
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.24.0",
-        "Node name for S&R": "LoadVideo",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.8",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "Taupe Cami Top & Zebra Print Mini Shorts Outfit Ideas 🤎 _ Chic Summer Fashion for Women #shorts.mp4",
-        "image"
-      ]
-    },
-    {
       "id": 325,
-      "type": "SaveVideo",
+      "type": "SCAILSaveSelectedVideo",
       "pos": [
-        800,
-        300
+        1740,
+        5580
       ],
-      "size": {
-        "0": 180,
-        "1": 24
-      },
+      "size": [
+        420,
+        190
+      ],
       "flags": {},
-      "order": 0,
-      "outputs": [
-        {
-          "name": "VIDEO",
-          "type": "VIDEO"
-        }
-      ],
+      "order": 11,
+      "mode": 0,
       "inputs": [
         {
-          "name": "images",
-          "type": "IMAGE",
-          "link": null
-        },
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "link": null
-        },
-        {
-          "name": "fps",
-          "type": "FLOAT",
-          "link": null
-        },
-        {
-          "name": "bit_depth",
-          "type": "INT",
+          "name": "режим",
+          "type": "COMBO",
+          "widget": {
+            "name": "режим"
+          },
           "link": null
         },
         {
           "name": "filename_prefix",
           "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
           "link": null
         },
         {
           "name": "format",
           "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
           "link": null
         },
         {
           "name": "codec",
           "type": "COMBO",
+          "widget": {
+            "name": "codec"
+          },
           "link": null
+        },
+        {
+          "name": "final_video_path",
+          "type": "STRING",
+          "link": 587
+        },
+        {
+          "name": "preview_video",
+          "type": "VIDEO",
+          "link": 471
         }
       ],
+      "outputs": [],
+      "title": "✅ ВЫХОД: выбрать что сохранить — ФИНАЛ или ПРЕВЬЮ",
+      "properties": {
+        "Node name for S&R": "SCAILSaveSelectedVideo"
+      },
       "widgets_values": [
-        "SCAIL2_PREVIEW",
+        "ФИНАЛ — полный ролик",
+        "SCAIL_ФИНАЛ",
         "auto",
-        "auto",
-        8
-      ],
-      "properties": {},
-      "title": "Save Preview Video (16 frames from SCAILAutoExtend) with original audio"
+        "auto"
+      ]
     }
   ],
   "links": [
-    [
-      471,
-      201,
-      0,
-      202,
-      0,
-      "VIDEO"
-    ],
     [
       494,
       155,
@@ -1060,64 +988,20 @@
       "BOOLEAN"
     ],
     [
-      581,
-      "IMAGE",
-      [
-        325,
-        0
-      ],
-      [
-        202,
-        0
-      ]
+      471,
+      201,
+      0,
+      325,
+      5,
+      "VIDEO"
     ],
     [
-      10,
-      "IMAGE",
-      [
-        114,
-        0
-      ],
-      [
-        325,
-        0
-      ]
-    ],
-    [
-      11,
-      "AUDIO",
-      [
-        215,
-        1
-      ],
-      [
-        325,
-        1
-      ]
-    ],
-    [
-      12,
-      "FLOAT",
-      [
-        215,
-        2
-      ],
-      [
-        325,
-        2
-      ]
-    ],
-    [
-      582,
-      "IMAGE",
-      [
-        325,
-        0
-      ],
-      [
-        202,
-        0
-      ]
+      587,
+      213,
+      1,
+      325,
+      4,
+      "STRING"
     ]
   ],
   "groups": [
@@ -1186,8 +1070,8 @@
           "bounding": [
             3980,
             3870,
-            128,
-            68
+            220,
+            128
           ]
         },
         "inputs": [
@@ -1530,15 +1414,28 @@
         "outputs": [
           {
             "id": "7ae88834-7553-45ec-a4e8-bab7d5276b45",
-            "name": "output",
+            "name": "preview_images",
             "type": "IMAGE",
             "linkIds": [
               544
             ],
-            "localized_name": "output",
+            "localized_name": "превью-кадры SCAIL",
             "pos": [
               4004,
               3894
+            ]
+          },
+          {
+            "id": "62fd1787-a8a7-48ab-94a6-d92a5dc9ea2b",
+            "name": "final_video_path",
+            "type": "STRING",
+            "linkIds": [
+              587
+            ],
+            "localized_name": "путь к финальному MP4 с аудио",
+            "pos": [
+              4004,
+              3975
             ]
           }
         ],
@@ -4059,7 +3956,7 @@
                 ]
               }
             ],
-            "title": "SCAIL Auto Extend V3.4 / LowVRAM stream-to-video",
+            "title": "SCAIL Auto Extend V3.4 — LowVRAM: полный ролик пишется в MP4, IMAGE = превью",
             "properties": {
               "aux_id": "Brobert-in-aus/scail-auto-extend",
               "ver": "0.24.0",
@@ -4562,7 +4459,7 @@
                 ]
               }
             ],
-            "title": "SCAIL Auto Prompt Builder V2 (Face + 3/4 + Front + Back)",
+            "title": "Авто-промпт SCAIL: лицо + тело + негатив",
             "properties": {
               "aux_id": "klimentiy23/scail-auto-prompt-builder",
               "ver": "d29eca811f9a8e9db5e795379c49832613e5f628",
@@ -4631,7 +4528,7 @@
               }
             },
             "widgets_values": [
-              "a woman with long brown hair wearing a red long dress with a cowl neck and a ruched waist, standing in a neutral studio setting, full body, elegant, soft lighting, natural skin tone, realistic, high detail, clean, no shadows, no background elements"
+              "a detailed 3D render of a plumber in a blue Almco Plumbing uniform, brown gloves, and brown boots, standing with arms outstretched in front of a house, realistic lighting, clean and sharp, high detail, full body, full face, realistic textures, natural shadows, no distortions, clean background, no extra elements"
             ]
           },
           {
@@ -4825,7 +4722,7 @@
               }
             },
             "widgets_values": [
-              "{\n  \"task_mode\": \"character_replacement\",\n  \"target_subject\": \"the woman in the street scene\",\n  \"reference_identity\": \"a woman with long brown hair, wearing a red long dress with a cowl neck and a ruched waist, standing in a neutral studio setting\",\n  \"replace\": [\n    \"identity\",\n    \"appearance\",\n    \"clothing\",\n    \"hair\"\n  ],\n  \"preserve\": [\n    \"motion timing\",\n    \"pose\",\n    \"camera framing\",\n    \"background\",\n    \"lighting\",\n    \"shadows\",\n    \"clothing/accessories\",\n    \"interactions\",\n    \"non-target people/objects\"\n  ],\n  \"avoid\": [\n    \"artifacts\",\n    \"wrong edits\"\n  ],\n  \"positive_prompt\": \"a woman with long brown hair wearing a red long dress with a cowl neck and a ruched waist, standing in a neutral studio setting, full body, elegant, soft lighting, natural skin tone, realistic, high detail, clean, no shadows, no background elements\",\n  \"negative_prompt\": \"blurry, distorted, extra limbs, wrong clothing, wrong hair, unnatural lighting, low quality, deformed\",\n  \"confidence_notes\": \"The reference images are clear and the target subject is distinct. The replacement is focused on the woman's appearance and clothing, which are consistent across the reference images.\",\n  \"user_hint\": \"\"\n}"
+              "{\n  \"task_mode\": \"character_replacement\",\n  \"target_subject\": \"plumber\",\n  \"reference_identity\": \"a man with a beard and mustache wearing a blue Almco Plumbing uniform, brown gloves, and brown boots, standing with arms outstretched in front of a house\",\n  \"replace\": [\n    \"identity\",\n    \"appearance\",\n    \"facial features\",\n    \"clothing\",\n    \"accessories\"\n  ],\n  \"preserve\": [\n    \"motion timing\",\n    \"pose\",\n    \"camera framing\",\n    \"background\",\n    \"lighting\",\n    \"shadows\",\n    \"clothing/accessories\",\n    \"interactions\",\n    \"non-target people/objects\"\n  ],\n  \"avoid\": [\n    \"artifacts\",\n    \"wrong edits\"\n  ],\n  \"positive_prompt\": \"a detailed 3D render of a plumber in a blue Almco Plumbing uniform, brown gloves, and brown boots, standing with arms outstretched in front of a house, realistic lighting, clean and sharp, high detail, full body, full face, realistic textures, natural shadows, no distortions, clean background, no extra elements\",\n  \"negative_prompt\": \"blurry, distorted, extra hands, extra feet, extra limbs, extra objects, bad anatomy, deformed, low quality, pixelation, bad lighting, wrong colors, wrong proportions, missing parts, extra limbs, extra hands, extra feet, extra objects, bad anatomy, deformed, low quality, pixelation, bad lighting, wrong colors, wrong proportions, missing parts, extra limbs, extra hands, extra feet, extra objects\",\n  \"confidence_notes\": \"The reference images are consistent and provide a clear identity for the target subject. The source video is a sequence of frames showing the same person in different poses, so the replacement should be consistent with the original identity.\",\n  \"user_hint\": \"\"\n}"
             ]
           },
           {
@@ -4871,7 +4768,7 @@
               }
             },
             "widgets_values": [
-              "blurry, distorted, extra limbs, wrong clothing, wrong hair, unnatural lighting, low quality, deformed"
+              "blurry, distorted, extra hands, extra feet, extra limbs, extra objects, bad anatomy, deformed, low quality, pixelation, bad lighting, wrong colors, wrong proportions, missing parts, extra limbs, extra hands, extra feet, extra objects, bad anatomy, deformed, low quality, pixelation, bad lighting, wrong colors, wrong proportions, missing parts, extra limbs, extra hands, extra feet, extra objects"
             ]
           },
           {
@@ -4917,7 +4814,7 @@
               }
             },
             "widgets_values": [
-              "input: 255 frames\noutput expected: 255 frames\ninternal planned frames: 257\nchunks: 4 [81, 81, 81, 29]\npreview note: this workflow uses core LoadVideo, which has no frame_load_cap. For an 81-frame preview, use a pre-trimmed preview clip or switch the loader to VHS_LoadVideo."
+              "input: 99 frames\noutput expected: 99 frames\ninternal planned frames: 101\nchunks: 2 [81, 25]\npreview note: this workflow uses core LoadVideo, which has no frame_load_cap. For an 81-frame preview, use a pre-trimmed preview clip or switch the loader to VHS_LoadVideo."
             ]
           },
           {
@@ -5039,7 +4936,8 @@
               24.5
             ],
             "color": "#223",
-            "bgcolor": "#335"
+            "bgcolor": "#335",
+            "title": "Планировщик длины: превью / полный ролик"
           },
           {
             "id": 346,
@@ -5072,7 +4970,7 @@
                 "links": null
               }
             ],
-            "title": "Planner report: preview first, then full length",
+            "title": "Отчёт планировщика",
             "properties": {
               "cnr_id": "comfyui-custom-scripts",
               "ver": "609f3afaa74b2f88ef9ce8d939626065e3247469",
@@ -5084,7 +4982,7 @@
               }
             },
             "widgets_values": [
-              "mode: preview_81\ninput: 255 frames (8.50s at 30.00 fps)\nrender input: 81 frames (2.70s)\noutput expected: 81 frames\ninternal planned frames: 81\nchunks: 1 [81]\npreview control: core LoadVideo has no frame_load_cap; use a pre-trimmed clip, or VHS_LoadVideo with frame_load_cap=81 (81-frame preview)\nrough estimate: ~24.5 minutes"
+              "mode: preview_81\ninput: 99 frames (3.30s at 30.00 fps)\nrender input: 81 frames (2.70s)\noutput expected: 81 frames\ninternal planned frames: 81\nchunks: 1 [81]\npreview control: core LoadVideo has no frame_load_cap; use a pre-trimmed clip, or VHS_LoadVideo with frame_load_cap=81 (81-frame preview)\nrough estimate: ~24.5 minutes"
             ]
           },
           {
@@ -5095,7 +4993,7 @@
               3660
             ],
             "size": [
-              420,
+              532.319921875,
               120
             ],
             "flags": {},
@@ -5118,7 +5016,7 @@
                 "links": null
               }
             ],
-            "title": "FULL RESULT PATH — download this, not the 16-frame preview SaveVideo",
+            "title": "Путь к сырому финальному MP4 без аудио",
             "properties": {
               "cnr_id": "comfyui-custom-scripts",
               "ver": "609f3afaa74b2f88ef9ce8d939626065e3247469",
@@ -5130,7 +5028,7 @@
               }
             },
             "widgets_values": [
-              "D:\\ComfyUI_windows_portable\\ComfyUI\\output\\SCAIL_lowvram\\SCAIL_V34_lowvram_jgw3m3hs_final.mp4"
+              "D:\\ComfyUI_windows_portable\\ComfyUI\\output\\SCAIL_lowvram\\SCAIL_V34_lowvram_79mltsd__final.mp4"
             ]
           },
           {
@@ -5215,7 +5113,7 @@
                 "links": null
               }
             ],
-            "title": "Mux final LowVRAM video with original audio",
+            "title": "Склеить полный LowVRAM MP4 с исходным аудио",
             "properties": {
               "cnr_id": "bjornulf_custom_nodes",
               "ver": "f43bce3516412a65b896cfed617f15d6c7292230",
@@ -5238,7 +5136,7 @@
               3820
             ],
             "size": [
-              420,
+              532.319921875,
               120
             ],
             "flags": {},
@@ -5261,7 +5159,7 @@
                 "links": null
               }
             ],
-            "title": "FULL RESULT PATH — download this, not the 16-frame preview SaveVideo",
+            "title": "Путь к финальному MP4 С АУДИО — именно он идёт в ФИНАЛ",
             "properties": {
               "cnr_id": "comfyui-custom-scripts",
               "ver": "609f3afaa74b2f88ef9ce8d939626065e3247469",
@@ -5273,7 +5171,7 @@
               }
             },
             "widgets_values": [
-              "final muxed video path will appear here after queue"
+              "Bjornulf\\combined_output\\combined_output_1785773152.mp4"
             ]
           }
         ],
@@ -6123,6 +6021,14 @@
             "target_id": 348,
             "target_slot": 4,
             "type": "FLOAT"
+          },
+          {
+            "id": 587,
+            "origin_id": 348,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "STRING"
           }
         ],
         "extra": {
@@ -6134,7 +6040,7 @@
   },
   "config": {},
   "extra": {
-    "frontendVersion": "1.45.15",
+    "frontendVersion": "1.45.19",
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,
@@ -6143,10 +6049,10 @@
     "anomalous_hashes": {},
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.6303940863128502,
+      "scale": 1.4864362802414408,
       "offset": [
-        242.05778168906227,
-        -4183.114773860903
+        -1375.2740619708393,
+        -4197.472857593393
       ]
     }
   },
