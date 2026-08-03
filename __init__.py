@@ -9,6 +9,10 @@ import json
 import math
 import os
 import random
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -47,8 +51,8 @@ class SCAILAutoExtend:
         "the result. Replaces the manual extension sections."
     )
     CATEGORY = "sampling/video"
-    RETURN_TYPES = ("IMAGE", "INT")
-    RETURN_NAMES = ("images", "frame_count")
+    RETURN_TYPES = ("IMAGE", "INT", "STRING")
+    RETURN_NAMES = ("images", "frame_count", "final_video_path")
     FUNCTION = "generate"
 
     @classmethod
@@ -100,6 +104,14 @@ class SCAILAutoExtend:
                     "tooltip": "EMA strength for temporal subject color smoothing. Higher = more stable, lower = follows lighting changes faster."}),
                 "temporal_color_strength": ("FLOAT", {"default": 0.65, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": "Blend strength of the color-smoothed subject back into the generated subject."}),
+                "low_vram_stream_to_video": ("BOOLEAN", {"default": False,
+                    "tooltip": "Low VRAM mode: process each SCAIL chunk, postprocess it, write it to disk as a segment, free tensors, then ffmpeg-concat segments into one mp4. Output images becomes a small preview/last chunk, while final_video_path points to the complete video."}),
+                "stream_video_fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 240.0, "step": 0.01,
+                    "tooltip": "FPS for low_vram_stream_to_video chunk mp4 files and final concat."}),
+                "stream_filename_prefix": ("STRING", {"default": "SCAIL_V34_lowvram",
+                    "tooltip": "Filename prefix for low_vram_stream_to_video outputs under ComfyUI/output/SCAIL_lowvram/."}),
+                "stream_preview_frames": ("INT", {"default": 16, "min": 1, "max": 256, "step": 1,
+                    "tooltip": "How many frames to return on the IMAGE output in low VRAM mode for preview. The full video is written to final_video_path."}),
             },
         }
 
@@ -111,7 +123,9 @@ class SCAILAutoExtend:
                  pose_end=1.0, add_noise=True, composite_source_background=False,
                  composite_mask_threshold=0.05, composite_mask_blur=5,
                  composite_mask_expand=3, temporal_subject_color_smoothing=False,
-                 temporal_color_alpha=0.85, temporal_color_strength=0.65):
+                 temporal_color_alpha=0.85, temporal_color_strength=0.65,
+                 low_vram_stream_to_video=False, stream_video_fps=24.0,
+                 stream_filename_prefix="SCAIL_V34_lowvram", stream_preview_frames=16):
         # imported here so a missing/changed core module gives a clear error at run time
         from comfy_extras.nodes_scail import WanSCAILToVideo
         from comfy_extras.nodes_custom_sampler import SamplerCustom
@@ -148,13 +162,136 @@ class SCAILAutoExtend:
               f"planning {n_eff} internal frames, {len(lengths)} chunk(s): {lengths}")
 
         pbar = comfy.utils.ProgressBar(len(lengths))
-        chunks = []          # stitched contributions
-        prev_frames = None   # full frames of previous chunk's contribution
+        chunks = []          # stitched contributions for legacy/full-image mode
+        prev_frames = None   # full frames of previous chunk's contribution (small overlap anchor only in low-vram mode)
         offset = 0
+        final_video_path = ""
+        ema_state = {"mean": None, "std": None}
+
+        def _build_alpha_mask(mask_source, count, device, dtype):
+            if mask_source is None:
+                return None
+            mask_img = mask_source[:count].to(device, dtype=dtype)
+            if mask_img.ndim == 4:
+                if mask_img.shape[-1] in (1, 3, 4):
+                    mask = mask_img[..., :3].amax(dim=-1, keepdim=True)
+                else:
+                    mask = mask_img.amax(dim=1, keepdim=True).movedim(1, -1)
+            elif mask_img.ndim == 3:
+                mask = mask_img.unsqueeze(-1)
+            else:
+                raise ValueError(f"unsupported pose_video_mask shape {tuple(mask_img.shape)}")
+            mask = (mask > float(composite_mask_threshold)).to(dtype)
+            k_expand = abs(int(composite_mask_expand))
+            if k_expand:
+                k = k_expand * 2 + 1
+                m = mask.movedim(-1, 1)
+                if composite_mask_expand > 0:
+                    m = F.max_pool2d(m, kernel_size=k, stride=1, padding=k_expand)
+                else:
+                    m = 1.0 - F.max_pool2d(1.0 - m, kernel_size=k, stride=1, padding=k_expand)
+                mask = m.movedim(1, -1)
+            blur = int(composite_mask_blur)
+            if blur > 0:
+                if blur % 2 == 0:
+                    blur += 1
+                pad = blur // 2
+                mask = F.avg_pool2d(mask.movedim(-1, 1), kernel_size=blur, stride=1, padding=pad).movedim(1, -1)
+            return mask.clamp(0.0, 1.0)
+
+        def _postprocess_chunk(contrib, start_frame):
+            out_chunk = contrib
+            count = out_chunk.shape[0]
+            alpha_mask = None
+            if pose_video_mask is not None:
+                try:
+                    mask_slice = pose_video_mask[start_frame:start_frame + count]
+                    alpha_mask = _build_alpha_mask(mask_slice, count, out_chunk.device, out_chunk.dtype)
+                except Exception as e:
+                    print(f"[SCAIL Auto Extend] chunk mask build failed at frame {start_frame}: {type(e).__name__}: {e}")
+
+            if composite_source_background and alpha_mask is not None:
+                try:
+                    src = pose_video[start_frame:start_frame + count].to(out_chunk.device, dtype=out_chunk.dtype)
+                    if src.shape[1:3] != out_chunk.shape[1:3]:
+                        src_chw = src.movedim(-1, 1)
+                        src_chw = comfy.utils.common_upscale(src_chw, out_chunk.shape[2], out_chunk.shape[1], "bilinear", crop="disabled")
+                        src = src_chw.movedim(1, -1)
+                    out_chunk = out_chunk * alpha_mask + src * (1.0 - alpha_mask)
+                except Exception as e:
+                    print(f"[SCAIL Auto Extend] chunk background composite failed at frame {start_frame}: {type(e).__name__}: {e}")
+            elif composite_source_background and pose_video_mask is None:
+                print("[SCAIL Auto Extend] composite_source_background requested, but pose_video_mask is missing; using raw SCAIL chunk.")
+
+            if temporal_subject_color_smoothing:
+                try:
+                    if alpha_mask is None:
+                        alpha_mask = torch.ones((out_chunk.shape[0], out_chunk.shape[1], out_chunk.shape[2], 1), device=out_chunk.device, dtype=out_chunk.dtype)
+                    eps = 1e-6
+                    alpha = float(temporal_color_alpha)
+                    strength = float(temporal_color_strength)
+                    smoothed_frames = []
+                    for t in range(out_chunk.shape[0]):
+                        frame = out_chunk[t]
+                        m = alpha_mask[t].clamp(0.0, 1.0)
+                        weight = m.sum().clamp_min(eps)
+                        mean = (frame * m).sum(dim=(0, 1), keepdim=True) / weight
+                        var = (((frame - mean) * m) ** 2).sum(dim=(0, 1), keepdim=True) / weight
+                        std = torch.sqrt(var + eps)
+                        if ema_state["mean"] is None:
+                            ema_state["mean"] = mean
+                            ema_state["std"] = std
+                        else:
+                            ema_state["mean"] = alpha * ema_state["mean"] + (1.0 - alpha) * mean
+                            ema_state["std"] = alpha * ema_state["std"] + (1.0 - alpha) * std
+                        matched = (frame - mean) / std.clamp_min(eps) * ema_state["std"].clamp_min(eps) + ema_state["mean"]
+                        matched = matched.clamp(0.0, 1.0)
+                        smoothed_frames.append(frame * (1.0 - m * strength) + matched * (m * strength))
+                    out_chunk = torch.stack(smoothed_frames, dim=0)
+                except Exception as e:
+                    print(f"[SCAIL Auto Extend] chunk temporal color smoothing failed at frame {start_frame}: {type(e).__name__}: {e}")
+            return out_chunk
+
+        def _ffmpeg_exe():
+            candidates = [
+                os.environ.get("VHS_FORCE_FFMPEG_PATH"),
+                os.environ.get("FFMPEG_PATH"),
+                "C:/ffmpeg/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe",
+                shutil.which("ffmpeg"),
+            ]
+            for c in candidates:
+                if c and os.path.exists(c):
+                    return c
+            return "ffmpeg"
+
+        def _write_mp4(frames, path, fps):
+            arr = (frames.detach().clamp(0, 1).mul(255).to(torch.uint8).cpu().numpy())
+            if arr.ndim != 4 or arr.shape[-1] != 3:
+                raise ValueError(f"expected NHWC RGB frames, got {arr.shape}")
+            h, w = arr.shape[1], arr.shape[2]
+            cmd = [_ffmpeg_exe(), "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                   "-s", f"{w}x{h}", "-r", str(float(fps)), "-i", "-", "-an",
+                   "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                   "-movflags", "+faststart", str(path)]
+            proc = subprocess.run(cmd, input=arr.tobytes(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if proc.returncode != 0:
+                raise RuntimeError(proc.stderr.decode("utf-8", errors="replace"))
+
+        stream_dir = None
+        segment_paths = []
+        preview_images = None
+        written_frames = 0
+        if low_vram_stream_to_video:
+            output_root = Path(folder_paths.get_output_directory()) / "SCAIL_lowvram"
+            output_root.mkdir(parents=True, exist_ok=True)
+            safe_prefix = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in str(stream_filename_prefix)).strip("._") or "SCAIL_V34_lowvram"
+            stream_dir = Path(tempfile.mkdtemp(prefix=safe_prefix + "_", dir=str(output_root)))
+            print(f"[SCAIL Auto Extend] low VRAM stream mode ON; chunk mp4 segments: {stream_dir}")
 
         for i, length in enumerate(lengths):
             comfy.model_management.throw_exception_if_processing_interrupted()
             seed = noise_seed + i if seed_mode == "increment" else noise_seed
+            contribution_start = 0 if i == 0 else offset - overlap
 
             cond = WanSCAILToVideo.execute(
                 positive=positive, negative=negative, vae=vae,
@@ -185,6 +322,7 @@ class SCAILAutoExtend:
                 contrib = images
             else:
                 contrib = images[overlap:]
+                contribution_start += overlap
                 if color_transfer and prev_frames is not None:
                     contrib = ColorTransfer.execute(
                         image_target=contrib,
@@ -194,117 +332,66 @@ class SCAILAutoExtend:
                         strength=1.0,
                     ).args[0]
 
-            chunks.append(contrib)
-            prev_frames = contrib
+            if low_vram_stream_to_video:
+                remaining = max(0, n_input - written_frames)
+                if remaining <= 0:
+                    break
+                if contrib.shape[0] > remaining:
+                    contrib = contrib[:remaining]
+                # Keep the next SCAIL anchor from the raw/color-transferred SCAIL output,
+                # not from the source-background composite. This matches legacy behavior
+                # while still retaining only overlap frames instead of every chunk.
+                keep = min(int(overlap), int(contrib.shape[0]))
+                next_prev_frames = contrib[-keep:].detach().to(comfy.model_management.intermediate_device())
+                contrib = _postprocess_chunk(contrib, written_frames)
+                if preview_images is None:
+                    preview_images = contrib[:max(1, int(stream_preview_frames))].detach().cpu()
+                segment_path = stream_dir / f"chunk_{i + 1:04d}.mp4"
+                _write_mp4(contrib, segment_path, stream_video_fps)
+                segment_paths.append(segment_path)
+                written_frames += int(contrib.shape[0])
+                prev_frames = next_prev_frames
+                del sampled, denoised, latent, images, contrib, pos_c, neg_c
+                comfy.model_management.soft_empty_cache()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            else:
+                chunks.append(contrib)
+                prev_frames = contrib
+
             pbar.update(1)
             print(f"[SCAIL Auto Extend] chunk {i + 1}/{len(lengths)} done "
                   f"({length} frames, offset now {offset})")
+
+        if low_vram_stream_to_video:
+            if not segment_paths:
+                raise RuntimeError("low_vram_stream_to_video produced no chunk segments")
+            concat_file = stream_dir / "concat.txt"
+            with concat_file.open("w", encoding="utf-8") as f:
+                for path in segment_paths:
+                    f.write("file '" + str(path).replace("\\", "/").replace("'", "'\\''") + "'\n")
+            final_path = stream_dir.parent / f"{stream_dir.name}_final.mp4"
+            cmd = [_ffmpeg_exe(), "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(concat_file),
+                   "-c", "copy", "-movflags", "+faststart", str(final_path)]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if proc.returncode != 0:
+                raise RuntimeError(proc.stderr.decode("utf-8", errors="replace"))
+            final_video_path = str(final_path)
+            print(f"[SCAIL Auto Extend] low VRAM final video: {final_video_path} ({written_frames} frames in {len(segment_paths)} segment(s))")
+            if preview_images is None:
+                preview_images = torch.zeros((1, max(1, int(height)), max(1, int(width)), 3), dtype=torch.float32)
+            return (preview_images.to(comfy.model_management.intermediate_device()), written_frames, final_video_path)
 
         out = torch.cat([c.to(chunks[0].device, dtype=chunks[0].dtype) for c in chunks], dim=0)
         if out.shape[0] > n_input:
             out = out[:n_input]
 
+        out = _postprocess_chunk(out, 0)
         if composite_source_background:
-            if pose_video_mask is None:
-                print("[SCAIL Auto Extend] composite_source_background requested, but pose_video_mask is missing; returning raw SCAIL output.")
-            else:
-                try:
-                    src = pose_video[:out.shape[0]].to(out.device, dtype=out.dtype)
-                    if src.shape[1:3] != out.shape[1:3]:
-                        src_chw = src.movedim(-1, 1)
-                        src_chw = comfy.utils.common_upscale(src_chw, out.shape[2], out.shape[1], "bilinear", crop="disabled")
-                        src = src_chw.movedim(1, -1)
-
-                    mask_img = pose_video_mask[:out.shape[0]].to(out.device, dtype=out.dtype)
-                    if mask_img.ndim == 4:
-                        if mask_img.shape[-1] in (1, 3, 4):
-                            mask = mask_img[..., :3].amax(dim=-1, keepdim=True)
-                        else:
-                            mask = mask_img.amax(dim=1, keepdim=True).movedim(1, -1)
-                    elif mask_img.ndim == 3:
-                        mask = mask_img.unsqueeze(-1)
-                    else:
-                        raise ValueError(f"unsupported pose_video_mask shape {tuple(mask_img.shape)}")
-
-                    mask = (mask > float(composite_mask_threshold)).to(out.dtype)
-                    k_expand = abs(int(composite_mask_expand))
-                    if k_expand:
-                        k = k_expand * 2 + 1
-                        m = mask.movedim(-1, 1)
-                        if composite_mask_expand > 0:
-                            m = F.max_pool2d(m, kernel_size=k, stride=1, padding=k_expand)
-                        else:
-                            m = 1.0 - F.max_pool2d(1.0 - m, kernel_size=k, stride=1, padding=k_expand)
-                        mask = m.movedim(1, -1)
-
-                    blur = int(composite_mask_blur)
-                    if blur > 0:
-                        if blur % 2 == 0:
-                            blur += 1
-                        pad = blur // 2
-                        mask = F.avg_pool2d(mask.movedim(-1, 1), kernel_size=blur, stride=1, padding=pad).movedim(1, -1)
-                    mask = mask.clamp(0.0, 1.0)
-                    out = out * mask + src * (1.0 - mask)
-                    print(f"[SCAIL Auto Extend] composited generated subject over original source background using pose mask (threshold={composite_mask_threshold}, expand={composite_mask_expand}, blur={composite_mask_blur}).")
-                except Exception as e:
-                    print(f"[SCAIL Auto Extend] background composite failed: {type(e).__name__}: {e}; returning raw SCAIL output.")
+            print(f"[SCAIL Auto Extend] composited generated subject over original source background using pose mask (threshold={composite_mask_threshold}, expand={composite_mask_expand}, blur={composite_mask_blur}).")
         if temporal_subject_color_smoothing:
-            if pose_video_mask is None:
-                print("[SCAIL Auto Extend] temporal_subject_color_smoothing requested, but pose_video_mask is missing; smoothing whole frame.")
-                alpha_mask = torch.ones((out.shape[0], out.shape[1], out.shape[2], 1), device=out.device, dtype=out.dtype)
-            else:
-                try:
-                    mask_img = pose_video_mask[:out.shape[0]].to(out.device, dtype=out.dtype)
-                    if mask_img.ndim == 4:
-                        if mask_img.shape[-1] in (1, 3, 4):
-                            alpha_mask = mask_img[..., :3].amax(dim=-1, keepdim=True)
-                        else:
-                            alpha_mask = mask_img.amax(dim=1, keepdim=True).movedim(1, -1)
-                    elif mask_img.ndim == 3:
-                        alpha_mask = mask_img.unsqueeze(-1)
-                    else:
-                        raise ValueError(f"unsupported pose_video_mask shape {tuple(mask_img.shape)}")
-                    alpha_mask = (alpha_mask > float(composite_mask_threshold)).to(out.dtype)
-                    blur = int(composite_mask_blur)
-                    if blur > 0:
-                        if blur % 2 == 0:
-                            blur += 1
-                        pad = blur // 2
-                        alpha_mask = F.avg_pool2d(alpha_mask.movedim(-1, 1), kernel_size=blur, stride=1, padding=pad).movedim(1, -1)
-                    alpha_mask = alpha_mask.clamp(0.0, 1.0)
-                except Exception as e:
-                    print(f"[SCAIL Auto Extend] temporal mask build failed: {type(e).__name__}: {e}; smoothing whole frame.")
-                    alpha_mask = torch.ones((out.shape[0], out.shape[1], out.shape[2], 1), device=out.device, dtype=out.dtype)
-
-            try:
-                eps = 1e-6
-                ema_mean = None
-                ema_std = None
-                smoothed_frames = []
-                alpha = float(temporal_color_alpha)
-                strength = float(temporal_color_strength)
-                for t in range(out.shape[0]):
-                    frame = out[t]
-                    m = alpha_mask[t].clamp(0.0, 1.0)
-                    weight = m.sum().clamp_min(eps)
-                    mean = (frame * m).sum(dim=(0, 1), keepdim=True) / weight
-                    var = (((frame - mean) * m) ** 2).sum(dim=(0, 1), keepdim=True) / weight
-                    std = torch.sqrt(var + eps)
-                    if ema_mean is None:
-                        ema_mean = mean
-                        ema_std = std
-                    else:
-                        ema_mean = alpha * ema_mean + (1.0 - alpha) * mean
-                        ema_std = alpha * ema_std + (1.0 - alpha) * std
-                    matched = (frame - mean) / std.clamp_min(eps) * ema_std.clamp_min(eps) + ema_mean
-                    matched = matched.clamp(0.0, 1.0)
-                    frame_out = frame * (1.0 - m * strength) + matched * (m * strength)
-                    smoothed_frames.append(frame_out)
-                out = torch.stack(smoothed_frames, dim=0)
-                print(f"[SCAIL Auto Extend] temporally smoothed target-subject color (alpha={temporal_color_alpha}, strength={temporal_color_strength}).")
-            except Exception as e:
-                print(f"[SCAIL Auto Extend] temporal subject color smoothing failed: {type(e).__name__}: {e}; returning unsmoothed output.")
-        return (out, out.shape[0])
+            print(f"[SCAIL Auto Extend] temporally smoothed target-subject color (alpha={temporal_color_alpha}, strength={temporal_color_strength}).")
+        return (out, out.shape[0], final_video_path)
 
 
 class SCAIL2IdentitySeeder:
