@@ -2,7 +2,7 @@
   "id": "v33-background-preserve-colorstable-autoprompt-autoextend",
   "revision": 6,
   "last_node_id": 349,
-  "last_link_id": 584,
+  "last_link_id": 586,
   "nodes": [
     {
       "id": 201,
@@ -235,7 +235,7 @@
           "links": null
         }
       ],
-      "title": "Save Video (V3.1 Simple Output)",
+      "title": "Save Full Video (from SCAIL_lowvram/*_final.mp4) with original audio",
       "properties": {
         "cnr_id": "comfy-core",
         "ver": "0.24.0",
@@ -247,7 +247,7 @@
         }
       },
       "widgets_values": [
-        "SCAIL2_V33_BackgroundPreserve_ColorStable",
+        "SCAIL_FULL_VIDEO",
         "auto",
         "auto"
       ]
@@ -919,6 +919,71 @@
         "Taupe Cami Top & Zebra Print Mini Shorts Outfit Ideas 🤎 _ Chic Summer Fashion for Women #shorts.mp4",
         "image"
       ]
+    },
+    {
+      "id": 325,
+      "type": "SaveVideo",
+      "pos": [
+        800,
+        300
+      ],
+      "size": {
+        "0": 180,
+        "1": 24
+      },
+      "flags": {},
+      "order": 0,
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "link": null
+        },
+        {
+          "name": "bit_depth",
+          "type": "INT",
+          "link": null
+        },
+        {
+          "name": "filename_prefix",
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "format",
+          "type": "COMBO",
+          "link": null
+        },
+        {
+          "name": "codec",
+          "type": "COMBO",
+          "link": null
+        }
+      ],
+      "widgets_values": [
+        "SCAIL2_PREVIEW",
+        "auto",
+        "auto",
+        8
+      ],
+      "properties": {},
+      "title": "Save Preview Video (16 frames from SCAILAutoExtend) with original audio"
     }
   ],
   "links": [
@@ -993,6 +1058,66 @@
       213,
       26,
       "BOOLEAN"
+    ],
+    [
+      581,
+      "IMAGE",
+      [
+        325,
+        0
+      ],
+      [
+        202,
+        0
+      ]
+    ],
+    [
+      10,
+      "IMAGE",
+      [
+        114,
+        0
+      ],
+      [
+        325,
+        0
+      ]
+    ],
+    [
+      11,
+      "AUDIO",
+      [
+        215,
+        1
+      ],
+      [
+        325,
+        1
+      ]
+    ],
+    [
+      12,
+      "FLOAT",
+      [
+        215,
+        2
+      ],
+      [
+        325,
+        2
+      ]
+    ],
+    [
+      582,
+      "IMAGE",
+      [
+        325,
+        0
+      ],
+      [
+        202,
+        0
+      ]
     ]
   ],
   "groups": [
@@ -1041,7 +1166,7 @@
         "state": {
           "lastGroupId": 18,
           "lastNodeId": 349,
-          "lastLinkId": 584,
+          "lastLinkId": 586,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -3969,7 +4094,7 @@
               0.95,
               0.9,
               true,
-              30.0,
+              30,
               "SCAIL_V34_lowvram",
               16
             ],
@@ -4993,7 +5118,7 @@
                 "links": null
               }
             ],
-            "title": "Final LowVRAM video path",
+            "title": "FULL RESULT PATH — download this, not the 16-frame preview SaveVideo",
             "properties": {
               "cnr_id": "comfyui-custom-scripts",
               "ver": "609f3afaa74b2f88ef9ce8d939626065e3247469",
@@ -5102,7 +5227,7 @@
               }
             },
             "widgets_values": [
-              30.0
+              30
             ]
           },
           {
@@ -5136,7 +5261,7 @@
                 "links": null
               }
             ],
-            "title": "Final LowVRAM video path WITH audio",
+            "title": "FULL RESULT PATH — download this, not the 16-frame preview SaveVideo",
             "properties": {
               "cnr_id": "comfyui-custom-scripts",
               "ver": "609f3afaa74b2f88ef9ce8d939626065e3247469",
@@ -6003,8 +6128,7 @@
         "extra": {
           "ue_links": [],
           "links_added_by_ue": []
-        },
-        "last_link_id": 586
+        }
       }
     ]
   },
