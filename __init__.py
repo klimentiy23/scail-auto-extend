@@ -791,7 +791,7 @@ class SCAILSaveSelectedVideo:
         return {
             "required": {
                 "режим": ([cls.FINAL_MODE, cls.PREVIEW_MODE], {"default": cls.FINAL_MODE}),
-                "filename_prefix": ("STRING", {"default": "SCAIL_ФИНАЛ", "multiline": False}),
+                "filename_prefix": ("STRING", {"default": "SCAIL_FINAL", "multiline": False}),
                 "format": (["auto", "mp4"], {"default": "auto"}),
                 "codec": (["auto", "h264"], {"default": "auto"}),
             },
@@ -809,6 +809,21 @@ class SCAILSaveSelectedVideo:
         file = f"{filename}_{counter:05}_.{ext.lstrip('.')}"
         return full_output_folder, file, subfolder, os.path.join(full_output_folder, file)
 
+    def _ui_video_result(self, file, subfolder):
+        """Return both Comfy core and Bjornulf-style preview payloads.
+
+        Different local frontends/custom nodes in this install look for either
+        ui.videos or ui.video. Providing both makes the saved mp4 visible in the
+        ComfyUI node result panel and still downloadable from /view.
+        """
+        return {
+            "ui": {
+                "videos": [{"filename": file, "subfolder": subfolder, "type": "output"}],
+                "video": [file, subfolder],
+                "metadata": {"autoplay": False, "mute": False, "loop": False},
+            }
+        }
+
     def save(self, режим, filename_prefix, format, codec, final_video_path="", preview_video=None):
         if режим == self.FINAL_MODE:
             video_path = (final_video_path or "").strip().strip('"')
@@ -820,18 +835,18 @@ class SCAILSaveSelectedVideo:
             ext = os.path.splitext(video_path)[1].lower() or ".mp4"
             if ext not in (".mp4", ".mkv", ".webm", ".mov"):
                 raise ValueError(f"Неподдерживаемый формат финального видео: {ext}")
-            full_output_folder, file, subfolder, out_path = self._next_output_path(filename_prefix or "SCAIL_ФИНАЛ", ext)
+            full_output_folder, file, subfolder, out_path = self._next_output_path(filename_prefix or "SCAIL_FINAL", ext)
             shutil.copy2(video_path, out_path)
             print(f"[SCAIL] Сохранён полный ролик: {out_path}")
-            return {"ui": {"videos": [{"filename": file, "subfolder": subfolder, "type": "output"}]}}
+            return self._ui_video_result(file, subfolder)
 
         if preview_video is None:
             raise ValueError("Режим ПРЕВЬЮ выбран, но preview_video не подключён.")
         from comfy_api.latest import Types
-        full_output_folder, file, subfolder, out_path = self._next_output_path(filename_prefix or "SCAIL_ПРЕВЬЮ", ".mp4")
+        full_output_folder, file, subfolder, out_path = self._next_output_path(filename_prefix or "SCAIL_PREVIEW", ".mp4")
         preview_video.save_to(out_path, format=Types.VideoContainer(format), codec=codec)
         print(f"[SCAIL] Сохранено короткое превью: {out_path}")
-        return {"ui": {"videos": [{"filename": file, "subfolder": subfolder, "type": "output"}]}}
+        return self._ui_video_result(file, subfolder)
 
 
 NODE_CLASS_MAPPINGS = {
