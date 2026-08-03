@@ -809,17 +809,27 @@ class SCAILSaveSelectedVideo:
         file = f"{filename}_{counter:05}_.{ext.lstrip('.')}"
         return full_output_folder, file, subfolder, os.path.join(full_output_folder, file)
 
-    def _ui_video_result(self, file, subfolder):
-        """Return both Comfy core and Bjornulf-style preview payloads.
+    def _ui_video_result(self, file, subfolder, out_path, fps=30.0):
+        """Return every preview payload shape used by this local ComfyUI.
 
-        Different local frontends/custom nodes in this install look for either
-        ui.videos or ui.video. Providing both makes the saved mp4 visible in the
-        ComfyUI node result panel and still downloadable from /view.
+        Core SaveVideo uses ui.PreviewVideo internally; VideoHelperSuite uses
+        ui.gifs plus frontend JS. This classic node returns old-style UI dicts,
+        so we provide gifs/videos/video and a tiny SCAIL frontend extension adds
+        the actual <video> player to this node.
         """
+        preview = {
+            "filename": file,
+            "subfolder": subfolder or "",
+            "type": "output",
+            "format": "video/mp4",
+            "frame_rate": fps,
+            "fullpath": out_path,
+        }
         return {
             "ui": {
-                "videos": [{"filename": file, "subfolder": subfolder, "type": "output"}],
-                "video": [file, subfolder],
+                "gifs": [preview],
+                "videos": [preview],
+                "video": [file, subfolder or ""],
                 "metadata": {"autoplay": False, "mute": False, "loop": False},
             }
         }
@@ -838,7 +848,7 @@ class SCAILSaveSelectedVideo:
             full_output_folder, file, subfolder, out_path = self._next_output_path(filename_prefix or "SCAIL_FINAL", ext)
             shutil.copy2(video_path, out_path)
             print(f"[SCAIL] Сохранён полный ролик: {out_path}")
-            return self._ui_video_result(file, subfolder)
+            return self._ui_video_result(file, subfolder, out_path)
 
         if preview_video is None:
             raise ValueError("Режим ПРЕВЬЮ выбран, но preview_video не подключён.")
@@ -846,7 +856,7 @@ class SCAILSaveSelectedVideo:
         full_output_folder, file, subfolder, out_path = self._next_output_path(filename_prefix or "SCAIL_PREVIEW", ".mp4")
         preview_video.save_to(out_path, format=Types.VideoContainer(format), codec=codec)
         print(f"[SCAIL] Сохранено короткое превью: {out_path}")
-        return self._ui_video_result(file, subfolder)
+        return self._ui_video_result(file, subfolder, out_path)
 
 
 NODE_CLASS_MAPPINGS = {
